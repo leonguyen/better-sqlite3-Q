@@ -121,10 +121,459 @@ Upgrading your `better-sqlite3` dependency can potentially introduce breaking ch
 * [`better-sqlite3` release notes](https://github.com/WiseLibs/better-sqlite3/releases)
 * [SQLite release history](https://www.sqlite.org/changes.html)
 
+# Query Builder - Complete Reference
+
+## Overview
+
+The Query Builder provides a Laravel-inspired, fluent interface for building and executing SQL queries with better-sqlite3. It implements a **polymorphic design pattern** with the following components:
+
+- **BaseStorage**: Abstract interface for storage implementations
+- **SQLiteStorage**: SQLite-specific storage backend
+- **QueryBuilder**: Fluent query building with method chaining
+- **SchemaBuilder**: Migration and schema management
+- **UnifiedDB**: Polymorphic database wrapper
+
+## Installation & Setup
+
+```javascript
+const Database = require('better-sqlite3');
+const db = new Database('my-database.db');
+
+// Create a UnifiedDB wrapper for fluent queries
+const unifiedDb = db.createQueryBuilder();
+```
+
+## Basic Usage
+
+### SELECT Queries
+
+```javascript
+// Get all records
+const users = unifiedDb
+  .table('users')
+  .get();
+
+// Get first record
+const user = unifiedDb
+  .table('users')
+  .where('id', 1)
+  .first();
+
+// Select specific columns
+const names = unifiedDb
+  .table('users')
+  .select('id', 'name', 'email')
+  .get();
+
+// Count records
+const count = unifiedDb
+  .table('users')
+  .where('status', 'active')
+  .count();
+```
+
+### WHERE Conditions
+
+```javascript
+// Simple equality
+unifiedDb.table('users').where('name', 'John').get();
+
+// Comparison operators
+unifiedDb.table('users').where('age', '>', 18).get();
+unifiedDb.table('users').where('age', '>=', 21).get();
+unifiedDb.table('users').where('age', '<', 65).get();
+unifiedDb.table('users').where('age', '<=', 60).get();
+unifiedDb.table('users').where('status', '!=', 'active').get();
+
+// OR conditions
+unifiedDb.table('users')
+  .where('status', 'active')
+  .orWhere('status', 'pending')
+  .get();
+```
+
+### Limiting & Ordering
+
+```javascript
+// Pagination
+unifiedDb.table('users')
+  .limit(10)
+  .offset(20)
+  .get();
+
+// Order by
+unifiedDb.table('users')
+  .orderBy('name', 'ASC')
+  .orderBy('created_at', 'DESC')
+  .get();
+
+// Group by
+unifiedDb.table('orders')
+  .select('user_id', 'COUNT(*) as total')
+  .groupBy('user_id')
+  .get();
+```
+
+### INSERT Operations
+
+```javascript
+// Insert single record
+unifiedDb.table('users')
+  .insert({ name: 'John', email: 'john@example.com' });
+
+// Insert multiple records
+unifiedDb.table('users')
+  .insert([
+    { name: 'John', email: 'john@example.com' },
+    { name: 'Jane', email: 'jane@example.com' },
+  ]);
+```
+
+### UPDATE Operations
+
+```javascript
+// Update records matching conditions
+unifiedDb.table('users')
+  .where('id', 1)
+  .update({ name: 'Updated Name', status: 'inactive' });
+
+// Update all records matching multiple conditions
+unifiedDb.table('users')
+  .where('status', 'active')
+  .orWhere('status', 'pending')
+  .update({ last_active: new Date().toISOString() });
+```
+
+### DELETE Operations
+
+```javascript
+// Delete records matching conditions
+unifiedDb.table('users')
+  .where('id', 1)
+  .delete();
+
+// Delete with multiple conditions
+unifiedDb.table('users')
+  .where('status', 'inactive')
+  .orWhere('created_at', '<', '2020-01-01')
+  .delete();
+
+// Note: Deleting without WHERE clause is prevented for safety
+```
+
+### JOINs
+
+```javascript
+// INNER JOIN
+unifiedDb.table('users')
+  .select('users.name', 'orders.total')
+  .join('orders', 'users.id = orders.user_id')
+  .get();
+
+// LEFT JOIN
+unifiedDb.table('users')
+  .leftJoin('orders', 'users.id = orders.user_id')
+  .get();
+
+// RIGHT JOIN
+unifiedDb.table('orders')
+  .rightJoin('users', 'users.id = orders.user_id')
+  .get();
+```
+
+## Schema Management
+
+### Creating Tables
+
+```javascript
+unifiedDb.schema().create('users', (table) => {
+  table.id();
+  table.string('name');
+  table.string('email');
+  table.string('password');
+  table.boolean('is_admin', false);
+  table.timestamps();
+});
+```
+
+### Available Column Types
+
+- `id(name)` - Auto-incrementing primary key
+- `increments(name)` - Integer auto-increment
+- `string(name, length)` - VARCHAR(length)
+- `text(name)` - TEXT
+- `integer(name)` - INTEGER
+- `boolean(name, defaultValue)` - BOOLEAN
+- `float(name)` - FLOAT
+- `double(name)` - DOUBLE
+- `decimal(name, total, places)` - DECIMAL
+- `json(name)` - JSON
+- `timestamps()` - created_at & updated_at
+- `softDeletes(name)` - Soft delete column
+
+### Dropping Tables
+
+```javascript
+unifiedDb.schema().drop('users');
+unifiedDb.schema().dropIfExists('old_table');
+```
+
+### Checking Tables
+
+```javascript
+const exists = unifiedDb.schema().hasTable('users');
+```
+
+## Advanced Features
+
+### Raw SQL
+
+```javascript
+const results = unifiedDb.raw(
+  'SELECT * FROM users WHERE age > ? AND status = ?',
+  [18, 'active']
+);
+```
+
+### Transactions
+
+```javascript
+const transaction = unifiedDb.transaction((action) => {
+  unifiedDb.table('users').insert({ name: 'John' });
+  unifiedDb.table('audit_log').insert({ action: 'user_created' });
+});
+
+transaction();
+```
+
+### Getting the Underlying Database
+
+```javascript
+const rawDb = unifiedDb.getDatabase();
+const stmt = rawDb.prepare('SELECT * FROM users');
+```
+
+### Viewing Compiled SQL
+
+```javascript
+const sql = unifiedDb.table('users')
+  .where('status', 'active')
+  .orderBy('name')
+  .toSql();
+
+console.log(sql);
+// SELECT * FROM users WHERE status = ? ORDER BY name ASC
+```
+
+## Design Pattern
+
+The Query Builder follows the **polymorphic design pattern**:
+
+```
+BaseStorage (abstract)
+    ├── SQLiteStorage (implementation for better-sqlite3)
+    └── [Other storage backends can be added]
+
+UnifiedDB
+    └── provides polymorphic interface to any BaseStorage
+```
+
+This allows the Query Builder to work with different storage backends while maintaining a consistent, Laravel-like API.
+
+## Backward Compatibility
+
+The Query Builder is entirely optional. You can still use better-sqlite3 the traditional way:
+
+```javascript
+const Database = require('better-sqlite3');
+const db = new Database('my-database.db');
+
+// Use traditional better-sqlite3 API
+const stmt = db.prepare('SELECT * FROM users');
+const users = stmt.all();
+
+// Or use the new Query Builder
+const unifiedDb = db.createQueryBuilder();
+const users2 = unifiedDb.table('users').get();
+```
+
+Both approaches work alongside each other.
+
+## Method Reference
+
+### Query Builder Methods
+
+| Method | Purpose |
+|--------|---------|
+| `from(table)` | Specify the table to query |
+| `table(table)` | Alias for `from()` |
+| `select(...columns)` | Specify columns to select (default: `*`) |
+| `where(column, operator, value)` | Add WHERE condition |
+| `orWhere(column, operator, value)` | Add OR WHERE condition |
+| `join(table, on)` | Add INNER JOIN |
+| `leftJoin(table, on)` | Add LEFT JOIN |
+| `rightJoin(table, on)` | Add RIGHT JOIN |
+| `orderBy(column, direction)` | Add ORDER BY clause (ASC/DESC) |
+| `groupBy(...columns)` | Add GROUP BY clause |
+| `having(column, operator, value)` | Add HAVING clause |
+| `limit(count)` | Add LIMIT clause |
+| `offset(count)` | Add OFFSET clause |
+| `get()` | Execute and get all results |
+| `first()` | Get first result only |
+| `count(column)` | Count matching records |
+| `insert(data)` | Insert one or more records |
+| `update(data)` | Update matching records |
+| `delete()` | Delete matching records |
+| `toSql()` | Get compiled SQL string |
+
+### Schema Builder Methods
+
+| Method | Purpose |
+|--------|---------|
+| `create(table, callback)` | Create a new table |
+| `drop(table)` | Drop a table |
+| `dropIfExists(table)` | Drop if exists (no error) |
+| `hasTable(table)` | Check if table exists |
+
+### Column Type Methods
+
+| Method | Description |
+|--------|-------------|
+| `id(name)` | Auto-increment primary key |
+| `increments(name)` | Integer auto-increment |
+| `string(name, length)` | Variable character string |
+| `text(name)` | Large text field |
+| `integer(name)` | Integer number |
+| `boolean(name, default)` | Boolean value |
+| `float(name)` | Floating point number |
+| `double(name)` | Double precision number |
+| `decimal(name, total, places)` | Fixed decimal number |
+| `json(name)` | JSON data |
+| `timestamps()` | created_at and updated_at |
+| `softDeletes(name)` | Soft delete timestamp |
+
+## Real-World Examples
+
+### User Management
+
+```javascript
+// Create users table
+unifiedDb.schema().create('users', (table) => {
+  table.id();
+  table.string('email');
+  table.string('name');
+  table.string('password');
+  table.boolean('is_admin', false);
+  table.timestamps();
+});
+
+// Add a user
+unifiedDb.table('users').insert({
+  email: 'user@example.com',
+  name: 'John Doe',
+  password: 'hashed_password',
+  is_admin: false,
+  created_at: new Date().toISOString(),
+  updated_at: new Date().toISOString(),
+});
+
+// Find user by email
+const user = unifiedDb.table('users')
+  .where('email', 'user@example.com')
+  .first();
+
+// Get all admin users
+const admins = unifiedDb.table('users')
+  .where('is_admin', true)
+  .orderBy('name')
+  .get();
+
+// Update user
+unifiedDb.table('users')
+  .where('id', user.id)
+  .update({ password: 'new_hashed_password', updated_at: new Date().toISOString() });
+
+// Delete user
+unifiedDb.table('users')
+  .where('id', user.id)
+  .delete();
+```
+
+### E-Commerce Orders
+
+```javascript
+// Create orders table
+unifiedDb.schema().create('orders', (table) => {
+  table.id();
+  table.integer('user_id');
+  table.string('status');
+  table.decimal('total', 10, 2);
+  table.timestamps();
+});
+
+// Get user's pending orders
+const orders = unifiedDb.table('orders')
+  .where('user_id', 1)
+  .where('status', 'pending')
+  .orderBy('created_at', 'DESC')
+  .get();
+
+// Get orders with total > $100
+const largeOrders = unifiedDb.table('orders')
+  .where('total', '>', 100)
+  .select('id', 'user_id', 'total', 'created_at')
+  .get();
+
+// Count orders by status
+const statusCounts = unifiedDb.table('orders')
+  .select('status', 'COUNT(*) as count')
+  .groupBy('status')
+  .get();
+
+// Update order status with transaction
+const updateOrderStatus = unifiedDb.transaction((orderId, newStatus) => {
+  unifiedDb.table('orders')
+    .where('id', orderId)
+    .update({ status: newStatus, updated_at: new Date().toISOString() });
+  unifiedDb.table('audit_log').insert({
+    action: 'order_status_changed',
+    order_id: orderId,
+    new_status: newStatus,
+    created_at: new Date().toISOString(),
+  });
+});
+
+updateOrderStatus(1, 'completed');
+```
+
+### Blog with Comments
+
+```javascript
+// Get posts with comment count
+const posts = unifiedDb.table('posts')
+  .select('posts.id', 'posts.title', 'COUNT(comments.id) as comment_count')
+  .leftJoin('comments', 'posts.id = comments.post_id')
+  .groupBy('posts.id')
+  .get();
+
+// Get comments for a specific post
+const comments = unifiedDb.table('comments')
+  .where('post_id', 1)
+  .where('approved', true)
+  .orderBy('created_at', 'DESC')
+  .get();
+
+// Bulk delete unapproved comments
+unifiedDb.table('comments')
+  .where('approved', false)
+  .where('created_at', '<', '2020-01-01')
+  .delete();
+```
+
 # Documentation
 
 - [API documentation](./docs/api.md)
-- [Query Builder guide](./QUERY_BUILDER_GUIDE.md) - Laravel-like fluent interface for queries
+- [Query Builder guide](./QUERY_BUILDER_GUIDE.md) - Comprehensive reference guide
 - [Performance](./docs/performance.md) (also see [benchmark results](./docs/benchmark.md))
 - [64-bit integer support](./docs/integer.md)
 - [Worker thread support](./docs/threads.md)
