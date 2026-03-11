@@ -57,6 +57,44 @@ const db = new Database('foobar.db', options);
 db.pragma('journal_mode = WAL');
 ```
 
+## Query Builder (Laravel-like Fluent Interface)
+
+`better-sqlite3` now includes a Laravel-inspired Query Builder for fluent, chainable query building:
+
+```js
+const db = require('better-sqlite3')('foobar.db');
+const unifiedDb = db.createQueryBuilder();
+
+// Create tables with schema builder
+unifiedDb.schema().create('users', (table) => {
+  table.id();
+  table.string('name');
+  table.string('email');
+  table.timestamps();
+});
+
+// Fluent query building
+const users = unifiedDb
+  .table('users')
+  .where('status', 'active')
+  .orderBy('name')
+  .limit(10)
+  .get();
+
+// INSERT
+unifiedDb.table('users').insert({ name: 'John', email: 'john@example.com' });
+
+// UPDATE
+unifiedDb.table('users').where('id', 1).update({ status: 'inactive' });
+
+// DELETE
+unifiedDb.table('users').where('id', 1).delete();
+```
+
+The Query Builder follows a **polymorphic design pattern** with optional storage backends and maintains full backward compatibility with the traditional `better-sqlite3` API.
+
+For comprehensive documentation, see the [Query Builder guide](./QUERY_BUILDER_GUIDE.md).
+
 ## Why should I use this instead of [node-sqlite3](https://github.com/mapbox/node-sqlite3)?
 
 - `node-sqlite3` uses asynchronous APIs for tasks that are either CPU-bound or serialized. That's not only bad design, but it wastes tons of resources. It also causes [mutex thrashing](https://en.wikipedia.org/wiki/Resource_contention) which has devastating effects on performance.
@@ -86,6 +124,7 @@ Upgrading your `better-sqlite3` dependency can potentially introduce breaking ch
 # Documentation
 
 - [API documentation](./docs/api.md)
+- [Query Builder guide](./QUERY_BUILDER_GUIDE.md) - Laravel-like fluent interface for queries
 - [Performance](./docs/performance.md) (also see [benchmark results](./docs/benchmark.md))
 - [64-bit integer support](./docs/integer.md)
 - [Worker thread support](./docs/threads.md)
